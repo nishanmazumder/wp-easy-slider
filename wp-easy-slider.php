@@ -8,8 +8,8 @@ function ba_slider_assets() {
 
     wp_add_inline_style('ba-slider-style', '
     .ba-slider-wrapper { width:100%; position:relative; overflow:hidden; }
-    .ba-slide { display:none; animation:fade .5s ease; margin-top: -20px !important; }
-    @keyframes fade { from{opacity:.4} to{opacity:1} }
+    .ba-slider-track { display: flex; transition: transform 0.5s ease-in-out; width: 100%; }
+    .ba-slide { min-width: 100%; flex-shrink: 0; margin-top: -20px !important; }
     .ba-arrow {
         position:absolute;
         top:50%;
@@ -128,47 +128,105 @@ function ba_slider_assets() {
     wp_register_script('ba-slider-js', false, [], false, true);
     wp_enqueue_script('ba-slider-js');
 
-    wp_add_inline_script('ba-slider-js', "
-    document.addEventListener('DOMContentLoaded', function(){
+    wp_add_inline_script('ba-slider-js', '
+    document.addEventListener("DOMContentLoaded", function(){
 
-        document.querySelectorAll('.ba-slider-wrapper').forEach(wrapper => {
+        document.querySelectorAll(".ba-slider-wrapper").forEach(wrapper => {
 
-            let index = 0;
-            const slides = wrapper.querySelectorAll('.ba-slide');
+            const track = wrapper.querySelector(".ba-slider-track");
+            let slides = Array.from(wrapper.querySelectorAll(".ba-slide"));
+            if (slides.length === 0) return;
 
-            function showSlide(i){
-                slides.forEach(s => s.style.display='none');
-                slides[i].style.display='block';
+            // Clone first and last slides
+            const firstClone = slides[0].cloneNode(true);
+            const lastClone = slides[slides.length - 1].cloneNode(true);
+
+            track.appendChild(firstClone);
+            track.insertBefore(lastClone, slides[0]);
+
+            // All slides including clones
+            const allSlides = wrapper.querySelectorAll(".ba-slide");
+            let index = 1; // Start at the first real slide
+            let isTransitioning = false;
+
+            function updatePosition(animate = true) {
+                if (!animate) {
+                    track.style.transition = "none";
+                } else {
+                    track.style.transition = "transform 0.5s ease-in-out";
+                }
+                track.style.transform = "translateX(-" + (index * 100) + "%)";
+                
+                if (!animate) {
+                    track.offsetHeight; // Force reflow
+                }
             }
 
-            wrapper.querySelector('.ba-next').onclick = () => {
-                index = (index+1) % slides.length;
-                showSlide(index);
-            };
+            // Initial position
+            updatePosition(false);
 
-            wrapper.querySelector('.ba-prev').onclick = () => {
-                index = (index-1+slides.length)%slides.length;
-                showSlide(index);
-            };
+            function nextSlide() {
+                if (isTransitioning) return;
+                isTransitioning = true;
+                index++;
+                updatePosition();
+            }
 
-            showSlide(index);
+            function prevSlide() {
+                if (isTransitioning) return;
+                isTransitioning = true;
+                index--;
+                updatePosition();
+            }
 
-            /* ===== BEFORE-AFTER CODEPEN FIXED ===== */
-            wrapper.querySelectorAll('[data-component=\"image-comparison-slider\"]').forEach(element => {
-                const sliderRange = element.querySelector('[data-image-comparison-range]');
-                const slider = element.querySelector('[data-image-comparison-slider]');
-                const thumb = element.querySelector('[data-image-comparison-thumb]');
-                const imageWrapperOverlay = element.querySelector('[data-image-comparison-overlay]');
+            track.addEventListener("transitionend", () => {
+                isTransitioning = false;
+                if (index === allSlides.length - 1) {
+                    index = 1;
+                    updatePosition(false);
+                } else if (index === 0) {
+                    index = allSlides.length - 2;
+                    updatePosition(false);
+                }
+            });
+
+            let slideInterval = setInterval(nextSlide, 5000);
+
+            const nextBtn = wrapper.querySelector(".ba-next");
+            const prevBtn = wrapper.querySelector(".ba-prev");
+
+            if(nextBtn) {
+                nextBtn.onclick = () => {
+                    clearInterval(slideInterval);
+                    nextSlide();
+                    slideInterval = setInterval(nextSlide, 5000);
+                };
+            }
+
+            if(prevBtn) {
+                prevBtn.onclick = () => {
+                    clearInterval(slideInterval);
+                    prevSlide();
+                    slideInterval = setInterval(nextSlide, 5000);
+                };
+            }
+
+            /* ===== BEFORE-AFTER COMPONENT INITIALIZATION ===== */
+            function initBeforeAfter(element) {
+                const sliderRange = element.querySelector("[data-image-comparison-range]");
+                const slider = element.querySelector("[data-image-comparison-slider]");
+                const thumb = element.querySelector("[data-image-comparison-thumb]");
+                const imageWrapperOverlay = element.querySelector("[data-image-comparison-overlay]");
 
                 if (!sliderRange || !slider || !thumb || !imageWrapperOverlay) return;
 
                 function setSliderstate(e) {
-                    if (e.type === 'input') {
-                        sliderRange.classList.add('image-comparison__range--active');
+                    if (e.type === "input") {
+                        sliderRange.classList.add("image-comparison__range--active");
                         return;
                     }
-                    sliderRange.classList.remove('image-comparison__range--active');
-                    element.removeEventListener('mousemove', moveSliderThumb);
+                    sliderRange.classList.remove("image-comparison__range--active");
+                    element.removeEventListener("mousemove", moveSliderThumb);
                 }
 
                 function moveSliderThumb(e) {
@@ -178,30 +236,35 @@ function ba_slider_assets() {
                     if (position <= -20) { position = -20; }
                     if (position >= rect.height - 20) { position = rect.height - 20; }
 
-                    thumb.style.top = position + 'px';
+                    thumb.style.top = position + "px";
                 }
 
                 function moveSliderRange(e) {
                     const value = e.target.value;
-                    slider.style.left = value + '%';
-                    imageWrapperOverlay.style.clipPath = 'polygon(0 0, ' + value + '% 0, ' + value + '% 100%, 0 100%)';
-                    imageWrapperOverlay.style.webkitClipPath = 'polygon(0 0, ' + value + '% 0, ' + value + '% 100%, 0 100%)';
+                    slider.style.left = value + "%";
+                    imageWrapperOverlay.style.clipPath = "polygon(0 0, " + value + "% 0, " + value + "% 100%, 0 100%)";
+                    imageWrapperOverlay.style.webkitClipPath = "polygon(0 0, " + value + "% 0, " + value + "% 100%, 0 100%)";
 
-                    element.addEventListener('mousemove', moveSliderThumb);
+                    element.addEventListener("mousemove", moveSliderThumb);
                     setSliderstate(e);
                 }
 
-                if ('ontouchstart' in window === false) {
-                    sliderRange.addEventListener('mouseup', e => setSliderstate(e));
-                    sliderRange.addEventListener('mousedown', moveSliderThumb);
+                if ("ontouchstart" in window === false) {
+                    sliderRange.addEventListener("mouseup", e => setSliderstate(e));
+                    sliderRange.addEventListener("mousedown", moveSliderThumb);
                 }
 
-                sliderRange.addEventListener('input', e => moveSliderRange(e));
-                sliderRange.addEventListener('change', e => moveSliderRange(e));
+                sliderRange.addEventListener("input", e => moveSliderRange(e));
+                sliderRange.addEventListener("change", e => moveSliderRange(e));
+            }
+
+            // Initialize all slides including clones
+            allSlides.forEach(slide => {
+                slide.querySelectorAll("[data-component=\"image-comparison-slider\"]").forEach(initBeforeAfter);
             });
         });
     });
-    ");
+    ');
 }
 add_action('wp_enqueue_scripts','ba_slider_assets');
 
@@ -213,56 +276,58 @@ $svg_icon = '<svg class="image-comparison__thumb-icon" xmlns="http://www.w3.org/
 </svg>';
 ?>
 <div class="ba-slider-wrapper">
-    <div class="ba-slide">
-        <div class="image-comparison" data-component="image-comparison-slider">
-            <div class="image-comparison__slider-wrapper">
-                <input type="range" min="0" max="100" value="50" class="image-comparison__range" data-image-comparison-range>
-                <div class="image-comparison__image-wrapper image-comparison__image-wrapper--overlay" data-image-comparison-overlay>
-                    <img src="https://rysecreativevillage.com/wp-content/uploads/2020/07/1000x600-3.jpg" class="image-comparison__image">
-                </div>
-                <div class="image-comparison__slider" data-image-comparison-slider>
-                    <span class="image-comparison__thumb" data-image-comparison-thumb>
-                        <?php echo $svg_icon; ?>
-                    </span>
-                </div>
-                <div class="image-comparison__image-wrapper">
-                    <img src="https://rysecreativevillage.com/wp-content/uploads/2020/06/sideview.jpg" class="image-comparison__image">
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="ba-slide">
-        <div class="image-comparison" data-component="image-comparison-slider">
-            <div class="image-comparison__slider-wrapper">
-                <input type="range" min="0" max="100" value="50" class="image-comparison__range" data-image-comparison-range>
-                <div class="image-comparison__image-wrapper image-comparison__image-wrapper--overlay" data-image-comparison-overlay>
-                    <img src="https://rysecreativevillage.com/wp-content/uploads/2022/09/RYSE-Creative-Village-Front-viewweb-scaled-e1593168420700.webp" class="image-comparison__image">
-                </div>
-                <div class="image-comparison__slider" data-image-comparison-slider>
-                    <span class="image-comparison__thumb" data-image-comparison-thumb>
-                        <?php echo $svg_icon; ?>
-                    </span>
-                </div>
-                <div class="image-comparison__image-wrapper">
-                    <img src="https://rysecreativevillage.com/wp-content/uploads/2022/09/RYSE-Creative-Village-Front-view-scaled-1.webp" class="image-comparison__image">
+    <div class="ba-slider-track">
+        <div class="ba-slide">
+            <div class="image-comparison" data-component="image-comparison-slider">
+                <div class="image-comparison__slider-wrapper">
+                    <input type="range" min="0" max="100" value="50" class="image-comparison__range" data-image-comparison-range>
+                    <div class="image-comparison__image-wrapper image-comparison__image-wrapper--overlay" data-image-comparison-overlay>
+                        <img src="https://rysecreativevillage.com/wp-content/uploads/2020/07/1000x600-3.jpg" class="image-comparison__image">
+                    </div>
+                    <div class="image-comparison__slider" data-image-comparison-slider>
+                        <span class="image-comparison__thumb" data-image-comparison-thumb>
+                            <?php echo $svg_icon; ?>
+                        </span>
+                    </div>
+                    <div class="image-comparison__image-wrapper">
+                        <img src="https://rysecreativevillage.com/wp-content/uploads/2020/06/sideview.jpg" class="image-comparison__image">
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
-    <div class="ba-slide">
-        <div class="image-comparison" data-component="image-comparison-slider">
-            <div class="image-comparison__slider-wrapper">
-                <input type="range" min="0" max="100" value="50" class="image-comparison__range" data-image-comparison-range>
-                <div class="image-comparison__image-wrapper image-comparison__image-wrapper--overlay" data-image-comparison-overlay>
-                    <img src="https://rysecreativevillage.com/wp-content/uploads/2022/09/Image-1-scaled-1.webp" class="image-comparison__image">
+        <div class="ba-slide">
+            <div class="image-comparison" data-component="image-comparison-slider">
+                <div class="image-comparison__slider-wrapper">
+                    <input type="range" min="0" max="100" value="50" class="image-comparison__range" data-image-comparison-range>
+                    <div class="image-comparison__image-wrapper image-comparison__image-wrapper--overlay" data-image-comparison-overlay>
+                        <img src="https://rysecreativevillage.com/wp-content/uploads/2022/09/RYSE-Creative-Village-Front-viewweb-scaled-e1593168420700.webp" class="image-comparison__image">
+                    </div>
+                    <div class="image-comparison__slider" data-image-comparison-slider>
+                        <span class="image-comparison__thumb" data-image-comparison-thumb>
+                            <?php echo $svg_icon; ?>
+                        </span>
+                    </div>
+                    <div class="image-comparison__image-wrapper">
+                        <img src="https://rysecreativevillage.com/wp-content/uploads/2022/09/RYSE-Creative-Village-Front-view-scaled-1.webp" class="image-comparison__image">
+                    </div>
                 </div>
-                <div class="image-comparison__slider" data-image-comparison-slider>
-                    <span class="image-comparison__thumb" data-image-comparison-thumb>
-                        <?php echo $svg_icon; ?>
-                    </span>
-                </div>
-                <div class="image-comparison__image-wrapper">
-                    <img src="https://rysecreativevillage.com/wp-content/uploads/2026/04/Image-5-scaled.jpg" class="image-comparison__image">
+            </div>
+        </div>
+        <div class="ba-slide">
+            <div class="image-comparison" data-component="image-comparison-slider">
+                <div class="image-comparison__slider-wrapper">
+                    <input type="range" min="0" max="100" value="50" class="image-comparison__range" data-image-comparison-range>
+                    <div class="image-comparison__image-wrapper image-comparison__image-wrapper--overlay" data-image-comparison-overlay>
+                        <img src="https://rysecreativevillage.com/wp-content/uploads/2022/09/Image-1-scaled-1.webp" class="image-comparison__image">
+                    </div>
+                    <div class="image-comparison__slider" data-image-comparison-slider>
+                        <span class="image-comparison__thumb" data-image-comparison-thumb>
+                            <?php echo $svg_icon; ?>
+                        </span>
+                    </div>
+                    <div class="image-comparison__image-wrapper">
+                        <img src="https://rysecreativevillage.com/wp-content/uploads/2026/04/Image-5-scaled.jpg" class="image-comparison__image">
+                    </div>
                 </div>
             </div>
         </div>
